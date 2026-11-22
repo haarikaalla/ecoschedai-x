@@ -10,4 +10,6 @@ headless=true
 gatherUsageStats=false
 [client]
 toolbarMode="minimal"
+showErrorDetails="none"
+showErrorLinks=false
 
