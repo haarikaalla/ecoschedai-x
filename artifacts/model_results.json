@@ -1,0 +1,13 @@
+{
+  "status": "precomputed by fixed CPU benchmark",
+  "seconds": 0.027,
+  "simple_cnn_mae": 118.59,
+  "quantile_temporal_cnn_mae": 78.63,
+  "conformal_q90": 128.0,
+  "empirical_coverage": 0.892,
+  "dueling_double_dqn_masked_cost": 104.7,
+  "reference_optimum_cost": 100.0,
+  "planner_gap_percent": 4.7,
+  "load_mae_without_telemetry": 118.59,
+  "load_mae_with_telemetry": 86.14
+}
