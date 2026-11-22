@@ -2,6 +2,10 @@
 
 EcoSchedAI-X is a new implementation, not the original research code. It is an offline-capable Streamlit decision-support simulator for energy, water, carbon, completion-time and constraint trade-offs. All operational outcomes and savings are simulated; cached open data supplies context only. The project makes no certification or production claim.
 
+## Live app
+
+[Open the deployed Streamlit app](https://ecoschedai-x.streamlit.app/)
+
 ## Run
 
 ```bash
