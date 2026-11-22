@@ -1,0 +1,8 @@
+[
+  {"stage": 1, "feature": "power, consolidation and cooling", "status": "implemented"},
+  {"stage": 2, "feature": "sites, routing and restrictions", "status": "implemented"},
+  {"stage": 3, "feature": "shield, fallback, shadow and audit", "status": "implemented"},
+  {"stage": 4, "feature": "forecast and planner benchmark", "status": "implemented"},
+  {"stage": 5, "feature": "open-data refresh and fallback", "status": "implemented"},
+  {"stage": 6, "feature": "analysis interface", "status": "implemented"}
+]
