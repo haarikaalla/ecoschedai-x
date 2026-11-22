@@ -68,6 +68,7 @@ def preset(name):
 st.title("Sustainable Scaling of AI Data Centers")
 st.subheader("Reducing the Energy and Water Footprint of Agentic AI Workloads")
 st.write("Agentic AI multiplies compute per request, so operators need to cut energy, water and carbon per completed task without breaking latency, deadlines or data-security rules.")
+st.write("The Resource-Budgeted Reasoning Governor coordinates optional agent steps with facility power, cooling and site conditions, then applies a deterministic safety shield before recommending an action.")
 st.markdown(f'<div class="statusbar"><b>Carbon:</b> {carbon_status} | <b>Weather:</b> {weather_status} | <b>Workload:</b> {workload_status} | GPU, cooling, controller and agent coordination: simulated assumptions (cascade p={st.session_state.cascade_p:.2f}, f={st.session_state.cascade_f:.2f}; cache={st.session_state.cache_hit:.0%}; batch effectiveness={st.session_state.batch_eff:.0%})</div>',unsafe_allow_html=True)
 with st.sidebar:
     st.header("Controls");scenario=st.selectbox("Scenario",["Conflict","Improve together"]);window=st.slider("Start flexibility (h)",1,12,8);idle=st.slider("Waiting power (W / step)",0,100,10);error=st.slider("Forecast error bound (%)",0,30,0);offsite=st.toggle("Include off-site water assumption",True);controls=st.toggle("Power and cooling controls",True);routing=st.toggle("Multi-site routing",True);shadow=st.toggle("Shadow mode: recommend only",False);st.caption("Off-site water assumption: 4.52 L / facility kWh")
@@ -92,7 +93,7 @@ if max(abs(pct(x[k],sbase[k])) for k in keys[:3])<1:
 
 tabs=st.tabs(["Overview","Compare","Explore","Live replay","Your data","Robustness","Security and audit","Agent coordination","Method and limits","Pilot data"])
 with tabs[0]:
-    st.write("The controller jointly considers facility energy, stress-weighted direct and electricity-related water, carbon and completion time. Critical work is common to every policy and excluded.")
+    st.write("The controller treats each completed goal as the accounting boundary. It jointly considers facility energy, stress-weighted direct and electricity-related water, carbon and completion time. Critical work is common to every policy and excluded.")
     melted=trace.melt("hour",value_vars=["carbon","temp","wet_bulb"],var_name="Trace",value_name="Value");safe_chart(alt.Chart(melted).mark_line().encode(x=alt.X("hour:Q",title="Hour",scale=alt.Scale(domain=[0,23])),y=alt.Y("Value:Q",title="Trace value (mixed units)",scale=alt.Scale(zero=False)),color="Trace:N"),300)
     st.subheader("Where adaptive control helps")
     cases=[("Strong carbon or wet-bulb swings",cfg),("Tight water stress at one site",replace(cfg,weights=(.5,3.,.5))),("Forecast changes",replace(cfg,error=.15)),("High capacity pressure",replace(cfg,window=3)),("Multi-site differences",replace(cfg,routing=True)),("Restricted tasks",replace(cfg,routing=True))];case_rows=[]
@@ -179,6 +180,7 @@ with tabs[5]:
 with tabs[6]:
     d=results["Balanced EcoSchedAI-X"];c1,c2,c3=st.columns(3);c1.metric("Restricted tasks",f"{int(d.restricted.sum())}");c2.metric("Routing violations",f"{int(d.security_violation.sum())}");c3.metric("Deadline misses",f"{int(d.deadline_miss.sum())}");st.download_button("Download audit log",audit_csv(d),"audit_log.csv","text/csv");st.caption("Metadata only; no prompts, outputs or payloads.");footer()
 with tabs[7]:
+    st.subheader("Resource-Budgeted Reasoning Governor")
     st.write("Agents declare criticality, slack or deadline, restricted status and estimated energy. The coordinator combines that metadata with facility conditions; agent-side levers remain separate from infrastructure control.")
     c1,c2,c3,c4=st.columns(4);c1.slider("Cascade success probability p",.0,1.,key="cascade_p",step=.05);c2.slider("Small-model energy fraction f",.05,1.,key="cascade_f",step=.05);c3.slider("Cache hit rate",.0,.9,key="cache_hit",step=.05);c4.slider("Batch effectiveness",.0,1.,key="batch_eff",step=.05);st.slider("Retry budget per workflow",0,6,key="retry_budget")
     st.caption("Quality is equal by construction: unsuccessful small-model attempts escalate to the large model. Retry avoidance assumes 5% of workflows enter a loop without a budget.")
