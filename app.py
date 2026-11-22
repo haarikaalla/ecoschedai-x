@@ -8,7 +8,7 @@ from agent_coordination import configurations,lever_accounting,batch_curve
 ROOT=Path(__file__).parent
 COLORS={"Run now":"#111111","Run now + static settings":"#6B7280","Energy-only":"#176B87","Carbon-only":"#4E735D","Water-only":"#279AB5","Balanced EcoSchedAI-X":"#7A4EAB"}
 METRICS={"Energy":"Energy (kWh / 1,000 steps)","Water":"Water total, stress-weighted (L / 1,000 steps)","Carbon":"Carbon (kgCO2e / 1,000 steps)","Completion time":"Mean completion time (h)"}
-FOOTER="Simulated results, not measurements. See Data sources."
+FOOTER="Model results, not measurements. See Method and limits / Data sources."
 st.set_page_config(page_title="Sustainable Scaling of AI Data Centers",layout="wide")
 st.markdown("""<style>.block-container{padding-top:1.1rem;max-width:1500px}h1{font-size:2.15rem!important}#MainMenu,footer,[data-testid=stToolbar],.stDeployButton{visibility:hidden!important;height:0!important}.statusbar{background:#eef5f7;border-left:4px solid #176b87;padding:.65rem .8rem;margin:.4rem 0 1rem;font-size:.9rem}.metric-card{background:#f5f7f8;border:1px solid #dce4e8;border-radius:9px;padding:.8rem;min-height:120px}.metric-label{font-size:.86rem;color:#52636d}.metric-value{font-size:1.35rem;font-weight:600;white-space:normal}.metric-delta{font-size:.82rem;margin:.18rem 0}.metric-base{font-size:.76rem;color:#60727c}.footer-note{border-top:1px solid #dfe6e9;margin-top:1.2rem;padding-top:.55rem;color:#60727c;font-size:.78rem}</style>""",unsafe_allow_html=True)
 for key,value in {"cascade_p":.85,"cascade_f":.30,"cache_hit":.20,"batch_eff":.60,"retry_budget":2}.items():
@@ -16,6 +16,12 @@ for key,value in {"cascade_p":.85,"cascade_f":.30,"cache_hit":.20,"batch_eff":.6
 
 def footer():st.markdown(f'<div class="footer-note">{FOOTER}</div>',unsafe_allow_html=True)
 def pct(v,b):return 100*(v/b-1) if b else 0
+def safe_chart(chart,height=None):
+    try:
+        if height is not None:chart=chart.properties(height=height)
+        st.altair_chart(chart,width="stretch")
+    except Exception:
+        st.info("This chart is temporarily unavailable; the result table remains available.")
 def read_upload(u):
     if u is None:return None,""
     raw=u.getvalue();return pd.read_csv(io.BytesIO(raw)),hashlib.sha1(raw).hexdigest()[:10]
@@ -66,7 +72,7 @@ st.markdown(f'<div class="statusbar"><b>Carbon:</b> {carbon_status} | <b>Weather
 with st.sidebar:
     st.header("Controls");scenario=st.selectbox("Scenario",["Conflict","Improve together"]);window=st.slider("Start flexibility (h)",1,12,8);idle=st.slider("Waiting power (W / step)",0,100,10);error=st.slider("Forecast error bound (%)",0,30,0);offsite=st.toggle("Include off-site water assumption",True);controls=st.toggle("Power and cooling controls",True);routing=st.toggle("Multi-site routing",True);shadow=st.toggle("Shadow mode: recommend only",False);st.caption("Off-site water assumption: 4.52 L / facility kWh")
     st.write("Presets");pc=st.columns(2)
-    for i,name in enumerate(["Energy-first","Water-first","Carbon-first","Balanced"]):pc[i%2].button(name,use_container_width=True,on_click=preset,args=(name,))
+    for i,name in enumerate(["Energy-first","Water-first","Carbon-first","Balanced"]):pc[i%2].button(name,width="stretch",on_click=preset,args=(name,))
     weights=(st.slider("Energy weight",0.,3.,st.session_state.get("energy_weight",1.),.1,key="energy_weight"),st.slider("Water weight",0.,3.,st.session_state.get("water_weight",1.),.1,key="water_weight"),st.slider("Carbon weight",0.,3.,st.session_state.get("carbon_weight",1.),.1,key="carbon_weight"))
 cfg=Settings(window=window,idle_w=idle,error=error/100,scenario=scenario,offsite=offsite,weights=weights,controls=controls,routing=routing,shadow=shadow,data_version=version)
 results={p:run_policy(cfg,p,version) for p in POLICIES};table=pd.DataFrame({p:summary(d) for p,d in results.items()}).T;b=table.loc["Run now"];sbase=table.loc["Run now + static settings"];x=table.loc["Balanced EcoSchedAI-X"]
@@ -87,7 +93,7 @@ if max(abs(pct(x[k],sbase[k])) for k in keys[:3])<1:
 tabs=st.tabs(["Overview","Compare","Explore","Live replay","Your data","Robustness","Security and audit","Agent coordination","Method and limits","Pilot data"])
 with tabs[0]:
     st.write("The controller jointly considers facility energy, stress-weighted direct and electricity-related water, carbon and completion time. Critical work is common to every policy and excluded.")
-    melted=trace.melt("hour",value_vars=["carbon","temp","wet_bulb"],var_name="Trace",value_name="Value");st.altair_chart(alt.Chart(melted).mark_line().encode(x=alt.X("hour:Q",title="Hour",scale=alt.Scale(domain=[0,23])),y=alt.Y("Value:Q",title="Trace value (mixed units)",scale=alt.Scale(zero=False)),color="Trace:N").properties(height=300),width="stretch")
+    melted=trace.melt("hour",value_vars=["carbon","temp","wet_bulb"],var_name="Trace",value_name="Value");safe_chart(alt.Chart(melted).mark_line().encode(x=alt.X("hour:Q",title="Hour",scale=alt.Scale(domain=[0,23])),y=alt.Y("Value:Q",title="Trace value (mixed units)",scale=alt.Scale(zero=False)),color="Trace:N"),300)
     st.subheader("Where adaptive control helps")
     cases=[("Strong carbon or wet-bulb swings",cfg),("Tight water stress at one site",replace(cfg,weights=(.5,3.,.5))),("Forecast changes",replace(cfg,error=.15)),("High capacity pressure",replace(cfg,window=3)),("Multi-site differences",replace(cfg,routing=True)),("Restricted tasks",replace(cfg,routing=True))];case_rows=[]
     for name,c in cases:
@@ -96,33 +102,60 @@ with tabs[0]:
 with tabs[1]:
     st.dataframe(table.round(3),width="stretch");st.download_button("Download comparison",table.to_csv().encode(),"comparison.csv","text/csv")
     long=[{"Policy":p,"Metric":m,"Run-now index":100*table.loc[p,k]/b[k]} for p in POLICIES for m,k in list(METRICS.items())[:3]];bar=pd.DataFrame(long)
-    st.altair_chart(alt.Chart(bar).mark_bar().encode(x=alt.X("Policy:N",sort=POLICIES,axis=alt.Axis(labelAngle=-25)),y=alt.Y("Run-now index:Q",title="Run now = 100"),color=alt.Color("Policy:N",scale=alt.Scale(domain=POLICIES,range=[COLORS[p] for p in POLICIES])),column="Metric:N",tooltip=["Policy","Metric",alt.Tooltip("Run-now index:Q",format=".1f")]).properties(height=250),width="stretch")
+    safe_chart(alt.Chart(bar).mark_bar().encode(x=alt.X("Policy:N",sort=POLICIES,axis=alt.Axis(labelAngle=-25)),y=alt.Y("Run-now index:Q",title="Run now = 100"),color=alt.Color("Policy:N",scale=alt.Scale(domain=POLICIES,range=[COLORS[p] for p in POLICIES])),column="Metric:N",tooltip=["Policy","Metric",alt.Tooltip("Run-now index:Q",format=".1f")]),250)
     st.subheader("Infrastructure and agent coordination");st.dataframe(agent_table.round(2),width="stretch",hide_index=True);footer()
 with tabs[2]:
-    a,bx=st.columns(2);xn=a.selectbox("Horizontal axis",list(METRICS));yn=bx.selectbox("Vertical axis",[m for m in METRICS if m!=xn]);sn=next(m for m in METRICS if m not in [xn,yn]);pareto=pd.DataFrame([{"Policy":p,**{m:table.loc[p,k] for m,k in METRICS.items()}} for p in POLICIES]);common=dict(x=alt.X(f"{xn}:Q",title=f"← lower {xn}",scale=alt.Scale(zero=False,padding=20)),y=alt.Y(f"{yn}:Q",title=f"lower {yn} ↓",scale=alt.Scale(zero=False,padding=20)),color=alt.Color("Policy:N",scale=alt.Scale(domain=POLICIES,range=[COLORS[p] for p in POLICIES])),tooltip=["Policy"]+[alt.Tooltip(f"{m}:Q",format=".2f") for m in METRICS])
-    pts=alt.Chart(pareto[pareto.Policy!="Run now"]).mark_circle(opacity=.85).encode(size=alt.Size(f"{sn}:Q",title=sn,scale=alt.Scale(range=[100,650])),**common);rn=alt.Chart(pareto[pareto.Policy=="Run now"]).mark_point(shape="diamond",filled=True,size=260,color="#111111").encode(x=common["x"],y=common["y"],tooltip=common["tooltip"]);labels=alt.Chart(pareto).mark_text(dx=9,dy=-9,align="left").encode(x=common["x"],y=common["y"],text="Policy:N",color=alt.Color("Policy:N",scale=alt.Scale(domain=POLICIES,range=[COLORS[p] for p in POLICIES]),legend=None));st.altair_chart((pts+rn+labels).properties(height=390),width="stretch")
+    a,bx=st.columns(2);xn=a.selectbox("Horizontal axis",list(METRICS));yn=bx.selectbox("Vertical axis",[m for m in METRICS if m!=xn]);sn=next(m for m in METRICS if m not in [xn,yn]);pareto=pd.DataFrame([{"Policy":p,**{m:table.loc[p,k] for m,k in METRICS.items()}} for p in POLICIES])
+    grouped=pareto.groupby([xn,yn],as_index=False,dropna=False).agg(**{"Policies":("Policy",lambda s:", ".join(s)),"Policy count":("Policy","size"),sn:(sn,"mean")})
+    grouped["Marker"]=grouped["Policies"];grouped.loc[grouped["Policy count"]>1,"Marker"]="Overlapping policies"
+    xvals=grouped[xn].to_numpy(float);yvals=grouped[yn].to_numpy(float);xpad=max(np.ptp(xvals)*.08,abs(xvals).max()*.01,1e-6);ypad=max(np.ptp(yvals)*.08,abs(yvals).max()*.01,1e-6)
+    common=dict(x=alt.X(f"{xn}:Q",title=f"← lower {xn}",scale=alt.Scale(domain=[float(xvals.min()-xpad),float(xvals.max()+xpad)],zero=False)),y=alt.Y(f"{yn}:Q",title=f"lower {yn} ↓",scale=alt.Scale(domain=[float(yvals.min()-ypad),float(yvals.max()+ypad)],zero=False)),tooltip=["Policies",alt.Tooltip(f"{xn}:Q",format=".2f"),alt.Tooltip(f"{yn}:Q",format=".2f"),alt.Tooltip(f"{sn}:Q",format=".2f")])
+    points=alt.Chart(grouped).mark_circle(opacity=.9,stroke="white",strokeWidth=1).encode(size=alt.Size(f"{sn}:Q",title=sn,scale=alt.Scale(range=[130,650])),color=alt.Color("Marker:N",scale=alt.Scale(domain=["Overlapping policies"]+POLICIES,range=["#8C6BB1"]+[COLORS[p] for p in POLICIES]),title="Policy group"),**common)
+    run_group=grouped[grouped["Policies"].map(lambda names:"Run now" in names.split(", "))]
+    run=alt.Chart(run_group).mark_point(shape="diamond",filled=True,size=280,color="#111111").encode(x=common["x"],y=common["y"],tooltip=common["tooltip"])
+    pc,tc=st.columns([2,1])
+    try:pc.altair_chart((points+run).properties(height=390),width="stretch")
+    except Exception:pc.info("This chart is temporarily unavailable; the result table remains available.")
+    tc.dataframe(pareto.round(2),width="stretch",hide_index=True)
     policy=st.selectbox("Timeline policy",POLICIES,index=len(POLICIES)-1);d=results[policy];ok=d[d.completed].copy();ok["lane_n"]=ok.groupby(["site","hour"]).cumcount()+1;ok["lane"]=ok.site+" · GPU "+ok.lane_n.astype(str);ok["end"]=np.minimum(24,ok.hour+ok.duration);ok["action"]=np.select([policy=="Run now",ok.site!="Site A",ok.cooling=="Dry/chiller",ok.power_cap<1,ok.wait>0],["Run-now timing","Routed","Dry cooling","Power-capped","Deferred"],default="Evaporative cooling");ad=["Run-now timing","Deferred","Power-capped","Routed","Evaporative cooling","Dry cooling"];ac=["#111111","#4E735D","#176B87","#7A4EAB","#279AB5","#B36B32"]
-    gantt=alt.Chart(ok).mark_bar(cornerRadius=2).encode(x=alt.X("hour:Q",title="Hour",scale=alt.Scale(domain=[0,24]),axis=alt.Axis(values=list(range(24)))),x2="end:Q",y=alt.Y("lane:N",title="Site and GPU lane"),color=alt.Color("action:N",scale=alt.Scale(domain=ad,range=ac)),tooltip=["job","site","lane","action","arrival","hour","end","cooling","power_cap","energy","water","carbon","latency"]);marks=alt.Chart(ok).mark_tick(color="#667780",opacity=.3).encode(x="arrival:Q",y="lane:N");st.altair_chart((gantt+marks).properties(height=max(300,18*ok.lane.nunique())),width="stretch")
+    gantt=alt.Chart(ok).mark_bar(cornerRadius=2).encode(x=alt.X("hour:Q",title="Hour",scale=alt.Scale(domain=[0,24]),axis=alt.Axis(values=list(range(24)))),x2="end:Q",y=alt.Y("lane:N",title="Site and GPU lane"),color=alt.Color("action:N",scale=alt.Scale(domain=ad,range=ac)),tooltip=["job","site","lane","action","arrival","hour","end","cooling","power_cap","energy","water","carbon","latency"]);marks=alt.Chart(ok).mark_tick(color="#667780",opacity=.3).encode(x="arrival:Q",y="lane:N");safe_chart(gantt+marks,max(300,18*ok.lane.nunique()))
     pick=st.selectbox("Why this decision",ok.job.tolist());row=ok[ok.job==pick].iloc[0];st.subheader(f"Chosen action: hour {int(row.hour)}, {row.site}, {row.cooling}, {int(row.power_cap*100)}% power cap")
     tr=site_traces(cfg);tr.attrs["lookup"]={(r.site,int(r.hour)):r for _,r in tr.iterrows()};j=workload(cfg).loc[int(row.job)];alts=[]
     for name,h,s,cool in [("Run-now counterfactual",int(j.arrival),"Site A","Evaporative"),("Chosen",int(row.hour),row.site,row.cooling),("One hour earlier",max(int(j.arrival),int(row.hour)-1),"Site A","Evaporative"),("Deadline",int(j.deadline),"Site A","Dry/chiller")]:
         o=_option(cfg,tr,j,h,s,cool,policy=="Balanced EcoSchedAI-X");alts.append({"Alternative":name,"Hour":h,"Site":s,"Cooling":cool,"Energy (kWh)":o["energy"],"Water (L)":o["water"],"Carbon (kgCO2e)":o["carbon"],"Completion (h)":o["latency"],"Deadline":"Pass" if h<=j.deadline else "Fail","Latency":"Pass" if o["latency"]<=cfg.max_latency else "Fail","Power":"Pass" if o["power_kw"]<=cfg.power_limit else "Fail","Security":"Pass" if not(j.restricted and s!="Site A") else "Fail"})
     st.dataframe(pd.DataFrame(alts).drop_duplicates(["Hour","Site","Cooling"]).round(3),width="stretch",hide_index=True);footer()
 with tabs[3]:
-    @st.fragment(run_every=1.0)
+    @st.fragment(run_every=.5)
     def replay_panel():
         if "replay_hour" not in st.session_state:st.session_state.replay_hour=0
-        p,q=st.columns(2);p.button("Play",on_click=lambda:st.session_state.update(replay_playing=True),use_container_width=True);q.button("Pause",on_click=lambda:st.session_state.update(replay_playing=False),use_container_width=True)
-        if st.session_state.get("replay_playing"):st.session_state.replay_hour=(st.session_state.replay_hour+1)%24
+        p,q,speed_col=st.columns([1,1,2]);p.button("Play",on_click=lambda:st.session_state.update(replay_playing=True),width="stretch");q.button("Pause",on_click=lambda:st.session_state.update(replay_playing=False),width="stretch");speed=speed_col.select_slider("Replay speed",options=["1×","2×","4×"],value="1×")
+        if st.session_state.get("replay_playing"):st.session_state.replay_hour=(st.session_state.replay_hour+{"1×":1,"2×":2,"4×":4}[speed])%24
         hour=st.slider("Current hour",0,23,key="replay_hour");cur,base=results["Balanced EcoSchedAI-X"],results["Run now"];replay=[]
         for name,d in [("Run now",base),("Controller",cur)]:
             z=d[d.completed&(d.hour<=hour)];replay.append({"Policy":name,"Energy (kWh)":z.energy.sum(),"Water (L)":z.water.sum(),"Carbon (kgCO2e)":z.carbon.sum()})
-        st.dataframe(pd.DataFrame(replay).round(2),width="stretch",hide_index=True);now=trace.iloc[hour];c1,c2=st.columns(2);c1.metric("Current carbon intensity",f"{now.carbon:.1f} gCO2e/kWh");c2.metric("Current wet-bulb temperature",f"{now.wet_bulb:.1f} °C")
+        replay_df=pd.DataFrame(replay);active=replay_df[replay_df[["Energy (kWh)","Water (L)","Carbon (kgCO2e)"]].ne(0).any(axis=1)]
+        if active.empty:st.info("No completed work by this hour.")
+        else:st.dataframe(active.round(2),width="stretch",hide_index=True)
+        rc=replay_df.set_index("Policy");cards=st.columns(5)
+        cards[0].metric("Cumulative energy",f"{rc.loc['Controller','Energy (kWh)']:,.2f} kWh",f"Run now {rc.loc['Run now','Energy (kWh)']:,.2f} kWh")
+        cards[1].metric("Cumulative water",f"{rc.loc['Controller','Water (L)']:,.2f} L",f"Run now {rc.loc['Run now','Water (L)']:,.2f} L")
+        cards[2].metric("Cumulative carbon",f"{rc.loc['Controller','Carbon (kgCO2e)']:,.2f} kgCO2e",f"Run now {rc.loc['Run now','Carbon (kgCO2e)']:,.2f} kgCO2e")
+        now=trace.iloc[hour];cards[3].metric("Carbon intensity",f"{now.carbon:.1f} gCO2e/kWh");cards[4].metric("Wet-bulb temperature",f"{now.wet_bulb:.1f} °C")
+        current=cur[cur.completed&(cur.hour==hour)]
+        if current.empty:st.caption("Controller action: no step starts this hour.")
+        else:
+            action="routed" if (current.site!="Site A").any() else ("deferred" if (current.wait>0).any() else "run-now timing")
+            st.caption(f"Controller action: {action}; site {', '.join(sorted(current.site.unique()))}.")
         for metric in ["energy","water","carbon"]:
             lines=[]
             for name,d in [("Run now",base),("Controller",cur)]:
-                z=d[d.completed].groupby("hour")[metric].sum().reindex(range(24),fill_value=0).cumsum();lines += [{"Hour":h,"Policy":name,"Value":v} for h,v in z.items()]
-            unit={"energy":"kWh","water":"L","carbon":"kgCO2e"}[metric];chart=alt.Chart(pd.DataFrame(lines)).mark_line(point=True).encode(x=alt.X("Hour:Q",scale=alt.Scale(domain=[0,23])),y=alt.Y("Value:Q",title=f"Cumulative {metric} ({unit})"),color=alt.Color("Policy:N",scale=alt.Scale(domain=["Run now","Controller"],range=["#111111","#7A4EAB"])));st.altair_chart(chart.properties(height=165,padding={"left":85,"right":10,"top":10,"bottom":30}),width="stretch")
+                z=d[d.completed].groupby("hour")[metric].sum().reindex(range(24),fill_value=0).cumsum();z=z[z.gt(0)];lines += [{"Hour":int(h),"Policy":name,"Value":float(v)} for h,v in z.items()]
+            unit={"energy":"kWh","water":"L","carbon":"kgCO2e"}[metric];line_data=pd.DataFrame(lines)
+            if line_data.empty:st.info(f"Cumulative {metric} becomes available when work completes.")
+            else:
+                chart=alt.Chart(line_data).mark_line(point=True).encode(x=alt.X("Hour:Q",title="Hour",scale=alt.Scale(domain=[0,23]),axis=alt.Axis(values=list(range(24)))),y=alt.Y("Value:Q",title=f"Cumulative {metric} ({unit})",scale=alt.Scale(zero=False)),color=alt.Color("Policy:N",scale=alt.Scale(domain=["Run now","Controller"],range=["#111111","#7A4EAB"])),tooltip=["Policy","Hour",alt.Tooltip("Value:Q",title=unit,format=".2f")])
+                now_line=alt.Chart(pd.DataFrame({"Hour":[hour]})).mark_rule(color="#B54A4A",strokeDash=[5,3],size=2).encode(x="Hour:Q")
+                safe_chart((chart+now_line).properties(padding={"left":105,"right":18,"top":12,"bottom":38}),270)
     replay_panel()
     footer()
 with tabs[4]:
@@ -158,8 +191,8 @@ with tabs[7]:
     request [label="Agent request" fillcolor="#DCE7EC"];critical [label="Critical step\nSite A · hour {int(chosen.arrival)}" fillcolor="#B54A4A" fontcolor="white"];
     cached [label="Cached lookup\nno compute" fillcolor="#6A9F58"];cascade [label="Cascaded step\nsmall model" fillcolor="#4C8BB5"];
     escalate [label="Escalated on failure\nlarge model" fillcolor="#B88436"];defer [label="Deferrable step\n{chosen.site} · hour {int(chosen.hour)}" fillcolor="#7E65A5" fontcolor="white"];
-    done [label="Completed task" fillcolor="#DCE7EC"];request->critical;request->cached;critical->cascade;cascade->done [label="success p"];cascade->escalate [label="failure 1-p"];escalate->defer;cached->done;defer->done;}}''';st.graphviz_chart(dot,use_container_width=True)
-    curve=batch_curve(st.session_state.batch_eff);st.subheader("Batch-size effect");st.dataframe(curve.round(3),width="stretch",hide_index=True);st.altair_chart(alt.Chart(curve).mark_line(point=True).encode(x=alt.X("Batch size:O"),y=alt.Y("Energy per equal-work step (kWh):Q",scale=alt.Scale(zero=False)),tooltip=list(curve.columns)).properties(height=240),width="stretch");footer()
+    done [label="Completed task" fillcolor="#DCE7EC"];request->critical;request->cached;critical->cascade;cascade->done [label="success p"];cascade->escalate [label="failure 1-p"];escalate->defer;cached->done;defer->done;}}''';st.graphviz_chart(dot,width="stretch")
+    curve=batch_curve(st.session_state.batch_eff);st.subheader("Batch-size effect");st.dataframe(curve.round(3),width="stretch",hide_index=True);safe_chart(alt.Chart(curve).mark_line(point=True).encode(x=alt.X("Batch size:O"),y=alt.Y("Energy per equal-work step (kWh):Q",scale=alt.Scale(zero=False)),tooltip=list(curve.columns)),260);footer()
 with tabs[8]:
     s=sanity_test();st.subheader("Mandatory Self-test");st.success(f"PASS — carbon-only {s['carbon_only']:.2f} ≤ run-now {s['run_now']:.2f} kgCO2e / 1,000 steps") if s["passed"] else st.error("FAIL");st.write("New here: joint accounting; power and cooling actions; protected routing; a constraint shield; uncertainty fallback; shadow recommendations; counterfactual audit; component attribution; and separately reported agent-side coordination.");st.write("Earlier supplied work used carbon opportunity windows and urgency constraints, a CNN trained on synthetic spatiotemporal carbon-intensity tensors (32, 32, 10, 1), and baseline, rule-based and DQN comparisons across regions. From paper: execution-time carbon intensity 720.5 / 685.2 / 650.3 gCO2/kWh, 4.88% / 9.72% lower. This was intensity at execution, not verified total emissions.");st.subheader("Data sources");st.dataframe(pd.DataFrame(sources()).drop(columns=["error"],errors="ignore"),width="stretch",hide_index=True);st.write("User uploads override the corresponding cached trace. Workload, hardware, cooling response, model cascading, batching, caching and retry-loop behaviour remain simulated.");st.write("Agent assumptions: small-model quality equals large-model quality by construction after escalation; default p=0.85 and f=0.30; cache hits avoid compute; batching interpolates the existing power-utilisation model; 5% of workflows are assumed loop-prone; retry budgets avoid only those modelled repeats.");st.write("Limits: approximate resource models, no full dependency graph, no measured agent success distribution, no lifecycle impact, and no production or certification claim. Novelty is a gap hypothesis, not a priority claim.");footer()
 with tabs[9]:
