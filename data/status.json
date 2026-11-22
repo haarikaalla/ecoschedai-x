@@ -1,0 +1,21 @@
+[
+  {
+    "source": "Grid carbon API",
+    "state": "real data",
+    "rows": 1920,
+    "range": "2026-10-08 to 2026-11-16"
+  },
+  {
+    "source": "Weather archive API",
+    "state": "real data",
+    "rows": 960,
+    "range": "2026-10-08 to 2026-11-16"
+  },
+  {
+    "source": "Public inference trace",
+    "state": "simulated (download failed)",
+    "rows": 0,
+    "range": "fixed-seed synthetic workload",
+    "error": "HTTPError"
+  }
+]
