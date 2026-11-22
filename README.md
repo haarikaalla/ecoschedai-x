@@ -1,6 +1,8 @@
 # EcoSchedAI-X
 
-EcoSchedAI-X is a new implementation.It is an offline-capable Streamlit decision-support simulator for energy, water, carbon, completion-time and constraint trade-offs. All operational outcomes and savings are simulated; cached open data supplies context only. The project makes no certification or production claim.
+EcoSchedAI-X is a new implementation, not the original research code. It is an offline-capable Streamlit decision-support simulator for energy, water, carbon, completion-time and constraint trade-offs. All operational outcomes and savings are simulated; cached open data supplies context only. The project makes no certification or production claim.
+
+The five operating areas are Overview, Resource Intelligence, Workload Orchestration, EcoSchedAI Simulator, and Decision Explainability. Existing scenario controls, replay, uploads, robustness analysis, agent coordination, audit, method notes and pilot guidance remain available within them. The industry view adds documented PUE/WUE/CUE boundaries, multi-site recommendations, workload actions, forecast confidence, operator review and CSV exports.
 
 ## Live app
 
@@ -18,7 +20,7 @@ python -m pytest -q
 streamlit run app.py
 ```
 
-For a local demo, `./run.sh` starts the app from the project environment when available. The repository root contains `app.py`, `requirements.txt`, `runtime.txt`, and `.streamlit/config.toml` for direct deployment to Streamlit Community Cloud.
+For a local demo, `./run.sh` starts the app from the project environment when available. The repository root contains `app.py`, `industry_views.py`, `simulator.py`, `agent_coordination.py`, `data_loader.py`, `requirements.txt`, `runtime.txt`, and `.streamlit/config.toml` for direct deployment to Streamlit Community Cloud.
 
 After dependencies are installed and data is cached, the app launches offline. `get_data.py` records failed downloads and never fabricates rows. The workload cache retains timestamps and token counts only.
 
