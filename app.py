@@ -10,7 +10,7 @@ COLORS={"Run now":"#111111","Run now + static settings":"#6B7280","Energy-only":
 METRICS={"Energy":"Energy (kWh / 1,000 steps)","Water":"Water total, stress-weighted (L / 1,000 steps)","Carbon":"Carbon (kgCO2e / 1,000 steps)","Completion time":"Mean completion time (h)"}
 FOOTER="Model results, not measurements. See Method and limits / Data sources."
 st.set_page_config(page_title="Sustainable Scaling of AI Data Centers",layout="wide")
-st.markdown("""<style>.block-container{padding-top:1.1rem;max-width:1500px}h1{font-size:2.15rem!important}#MainMenu,footer,[data-testid=stToolbar],.stDeployButton{visibility:hidden!important;height:0!important}.statusbar{background:#eef5f7;border-left:4px solid #176b87;padding:.65rem .8rem;margin:.4rem 0 1rem;font-size:.9rem}.metric-card{background:#f5f7f8;border:1px solid #dce4e8;border-radius:9px;padding:.8rem;min-height:120px}.metric-label{font-size:.86rem;color:#52636d}.metric-value{font-size:1.35rem;font-weight:600;white-space:normal}.metric-delta{font-size:.82rem;margin:.18rem 0}.metric-base{font-size:.76rem;color:#60727c}.footer-note{border-top:1px solid #dfe6e9;margin-top:1.2rem;padding-top:.55rem;color:#60727c;font-size:.78rem}</style>""",unsafe_allow_html=True)
+st.markdown("""<style>.block-container{padding-top:1.1rem;max-width:1500px}h1{font-size:2.15rem!important}#MainMenu,footer,[data-testid=stToolbar],.stDeployButton{visibility:hidden!important;height:0!important}.statusbar{background:#eef5f7;border-left:4px solid #176b87;padding:.65rem .8rem;margin:.4rem 0 1rem;font-size:.9rem}.metric-card{background:#f5f7f8;border:1px solid #dce4e8;border-radius:9px;padding:.8rem;min-height:120px}.metric-label{font-size:.86rem;color:#52636d}.metric-value{font-size:1.35rem;font-weight:600;white-space:normal}.metric-delta{font-size:.82rem;margin:.18rem 0}.metric-base{font-size:.76rem;color:#60727c}.footer-note{border-top:1px solid #dfe6e9;margin-top:1.2rem;padding-top:.55rem;color:#60727c;font-size:.78rem}[data-testid="stMetric"]{min-width:0}[data-testid="stMetricLabel"],[data-testid="stMetricValue"],[data-testid="stMetricDelta"]{overflow:visible!important;white-space:normal!important;text-overflow:clip!important}</style>""",unsafe_allow_html=True)
 for key,value in {"cascade_p":.85,"cascade_f":.30,"cache_hit":.20,"batch_eff":.60,"retry_budget":2}.items():
     if key not in st.session_state:st.session_state[key]=value
 
@@ -110,11 +110,10 @@ with tabs[2]:
     grouped["Marker"]=grouped["Policies"];grouped.loc[grouped["Policy count"]>1,"Marker"]="Overlapping policies"
     xvals=grouped[xn].to_numpy(float);yvals=grouped[yn].to_numpy(float);xpad=max(np.ptp(xvals)*.08,abs(xvals).max()*.01,1e-6);ypad=max(np.ptp(yvals)*.08,abs(yvals).max()*.01,1e-6)
     common=dict(x=alt.X(f"{xn}:Q",title=f"← lower {xn}",scale=alt.Scale(domain=[float(xvals.min()-xpad),float(xvals.max()+xpad)],zero=False)),y=alt.Y(f"{yn}:Q",title=f"lower {yn} ↓",scale=alt.Scale(domain=[float(yvals.min()-ypad),float(yvals.max()+ypad)],zero=False)),tooltip=["Policies",alt.Tooltip(f"{xn}:Q",format=".2f"),alt.Tooltip(f"{yn}:Q",format=".2f"),alt.Tooltip(f"{sn}:Q",format=".2f")])
-    points=alt.Chart(grouped).mark_circle(opacity=.9,stroke="white",strokeWidth=1).encode(size=alt.Size(f"{sn}:Q",title=sn,scale=alt.Scale(range=[130,650])),color=alt.Color("Marker:N",scale=alt.Scale(domain=["Overlapping policies"]+POLICIES,range=["#8C6BB1"]+[COLORS[p] for p in POLICIES]),title="Policy group"),**common)
-    run_group=grouped[grouped["Policies"].map(lambda names:"Run now" in names.split(", "))]
-    run=alt.Chart(run_group).mark_point(shape="diamond",filled=True,size=280,color="#111111").encode(x=common["x"],y=common["y"],tooltip=common["tooltip"])
+    grouped["Shape"]=grouped["Policies"].map(lambda names:"Run now" if "Run now" in names.split(", ") else "Policy group")
+    points=alt.Chart(grouped).mark_point(filled=True,opacity=.9,stroke="white",strokeWidth=1).encode(size=alt.Size(f"{sn}:Q",title=sn,scale=alt.Scale(range=[130,650])),shape=alt.Shape("Shape:N",scale=alt.Scale(domain=["Run now","Policy group"],range=["diamond","circle"]),legend=None),color=alt.Color("Marker:N",scale=alt.Scale(domain=["Overlapping policies"]+POLICIES,range=["#8C6BB1"]+[COLORS[p] for p in POLICIES]),title="Policy group",legend=alt.Legend(orient="top",direction="horizontal")),**common)
     pc,tc=st.columns([2,1])
-    try:pc.altair_chart((points+run).properties(height=390),width="stretch")
+    try:pc.altair_chart(points.properties(height=390),width="stretch")
     except Exception:pc.info("This chart is temporarily unavailable; the result table remains available.")
     tc.dataframe(pareto.round(2),width="stretch",hide_index=True)
     policy=st.selectbox("Timeline policy",POLICIES,index=len(POLICIES)-1);d=results[policy];ok=d[d.completed].copy();ok["lane_n"]=ok.groupby(["site","hour"]).cumcount()+1;ok["lane"]=ok.site+" · GPU "+ok.lane_n.astype(str);ok["end"]=np.minimum(24,ok.hour+ok.duration);ok["action"]=np.select([policy=="Run now",ok.site!="Site A",ok.cooling=="Dry/chiller",ok.power_cap<1,ok.wait>0],["Run-now timing","Routed","Dry cooling","Power-capped","Deferred"],default="Evaporative cooling");ad=["Run-now timing","Deferred","Power-capped","Routed","Evaporative cooling","Dry cooling"];ac=["#111111","#4E735D","#176B87","#7A4EAB","#279AB5","#B36B32"]
@@ -136,11 +135,11 @@ with tabs[3]:
         replay_df=pd.DataFrame(replay);active=replay_df[replay_df[["Energy (kWh)","Water (L)","Carbon (kgCO2e)"]].ne(0).any(axis=1)]
         if active.empty:st.info("No completed work by this hour.")
         else:st.dataframe(active.round(2),width="stretch",hide_index=True)
-        rc=replay_df.set_index("Policy");cards=st.columns(5)
-        cards[0].metric("Cumulative energy",f"{rc.loc['Controller','Energy (kWh)']:,.2f} kWh",f"Run now {rc.loc['Run now','Energy (kWh)']:,.2f} kWh")
-        cards[1].metric("Cumulative water",f"{rc.loc['Controller','Water (L)']:,.2f} L",f"Run now {rc.loc['Run now','Water (L)']:,.2f} L")
-        cards[2].metric("Cumulative carbon",f"{rc.loc['Controller','Carbon (kgCO2e)']:,.2f} kgCO2e",f"Run now {rc.loc['Run now','Carbon (kgCO2e)']:,.2f} kgCO2e")
-        now=trace.iloc[hour];cards[3].metric("Carbon intensity",f"{now.carbon:.1f} gCO2e/kWh");cards[4].metric("Wet-bulb temperature",f"{now.wet_bulb:.1f} °C")
+        rc=replay_df.set_index("Policy");resource_cards=st.columns(3)
+        resource_cards[0].metric("Cumulative energy",f"{rc.loc['Controller','Energy (kWh)']:,.2f} kWh",f"Run now {rc.loc['Run now','Energy (kWh)']:,.2f} kWh")
+        resource_cards[1].metric("Cumulative water",f"{rc.loc['Controller','Water (L)']:,.2f} L",f"Run now {rc.loc['Run now','Water (L)']:,.2f} L")
+        resource_cards[2].metric("Cumulative carbon",f"{rc.loc['Controller','Carbon (kgCO2e)']:,.2f} kgCO2e",f"Run now {rc.loc['Run now','Carbon (kgCO2e)']:,.2f} kgCO2e")
+        now=trace.iloc[hour];condition_cards=st.columns(2);condition_cards[0].metric("Carbon intensity",f"{now.carbon:.1f} gCO2e/kWh");condition_cards[1].metric("Wet-bulb temperature",f"{now.wet_bulb:.1f} °C")
         current=cur[cur.completed&(cur.hour==hour)]
         if current.empty:st.caption("Controller action: no step starts this hour.")
         else:
@@ -153,7 +152,7 @@ with tabs[3]:
             unit={"energy":"kWh","water":"L","carbon":"kgCO2e"}[metric];line_data=pd.DataFrame(lines)
             if line_data.empty:st.info(f"Cumulative {metric} becomes available when work completes.")
             else:
-                chart=alt.Chart(line_data).mark_line(point=True).encode(x=alt.X("Hour:Q",title="Hour",scale=alt.Scale(domain=[0,23]),axis=alt.Axis(values=list(range(24)))),y=alt.Y("Value:Q",title=f"Cumulative {metric} ({unit})",scale=alt.Scale(zero=False)),color=alt.Color("Policy:N",scale=alt.Scale(domain=["Run now","Controller"],range=["#111111","#7A4EAB"])),tooltip=["Policy","Hour",alt.Tooltip("Value:Q",title=unit,format=".2f")])
+                chart=alt.Chart(line_data).mark_line(point=True).encode(x=alt.X("Hour:Q",title="Hour",scale=alt.Scale(domain=[0,23]),axis=alt.Axis(values=list(range(0,24,2)),labelOverlap=False)),y=alt.Y("Value:Q",title=f"Cumulative {metric} ({unit})",scale=alt.Scale(zero=True)),color=alt.Color("Policy:N",scale=alt.Scale(domain=["Run now","Controller"],range=["#111111","#7A4EAB"]),legend=alt.Legend(orient="top",direction="horizontal",title=None)),tooltip=["Policy","Hour",alt.Tooltip("Value:Q",title=unit,format=".2f")])
                 now_line=alt.Chart(pd.DataFrame({"Hour":[hour]})).mark_rule(color="#B54A4A",strokeDash=[5,3],size=2).encode(x="Hour:Q")
                 safe_chart((chart+now_line).properties(padding={"left":105,"right":18,"top":12,"bottom":38}),270)
     replay_panel()
